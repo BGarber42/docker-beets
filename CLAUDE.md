@@ -18,7 +18,7 @@ Compose-facing behavior must remain compatible with `lscr.io/linuxserver/beets`:
 - `/lsiopy` is a symlink to `/opt/beets` (venv used by `beet`)
 - `INSTALL_PIP_PACKAGES` (`|` / comma / whitespace separated; PyPI or
   `git+https://...`) installs into that venv at container start via `uv pip`
-  (root only; before dropping to `abc`)
+  (root only; before dropping to `abc`). Runtime includes `git` so VCS URLs work.
 - `DOCKER_MODS` is intentionally unsupported
 
 Internals may differ (no Alpine/s6 requirement).

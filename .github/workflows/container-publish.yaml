@@ -353,6 +353,7 @@ jobs:
               echo "web UI port is ready"
               docker exec "${cid}" test -f /config/config.yaml
               docker exec "${cid}" test -x /config/beets.sh
+              docker exec "${cid}" git --version >/dev/null
               docker exec -u abc "${cid}" beet version >/dev/null
               docker exec -u abc "${cid}" python -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init(None)"
               exit 0

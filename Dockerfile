@@ -98,6 +98,7 @@ RUN apt-get update \
       flac \
       gir1.2-gstreamer-1.0 \
       gir1.2-gst-plugins-base-1.0 \
+      git \
       gosu \
       gstreamer1.0-plugins-base \
       gstreamer1.0-plugins-good \
