@@ -259,8 +259,9 @@ jobs:
           for _ in $(seq 1 30); do
             if (echo >/dev/tcp/127.0.0.1/8337) >/dev/null 2>&1; then
               echo "web UI port is ready"
-              test -f "${WORK}/config/config.yaml"
-              test -x "${WORK}/config/beets.sh"
+              docker exec "${cid}" test -f /config/config.yaml
+              docker exec "${cid}" test -x /config/beets.sh
+              docker exec -u abc "${cid}" beet version >/dev/null
               exit 0
             fi
             sleep 2
