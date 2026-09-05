@@ -41,7 +41,7 @@ fetchart:
 
 replaygain:
     auto: no
-    command: mp3gain
+    backend: ffmpeg
 
 scrub:
     auto: yes

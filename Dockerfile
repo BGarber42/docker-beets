@@ -89,7 +89,6 @@ ENV BEETSDIR=/config \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
-      chromaprint-tools \
       ffmpeg \
       flac \
       gosu \
@@ -98,8 +97,8 @@ RUN apt-get update \
       gstreamer1.0-plugins-good \
       imagemagick \
       libcairo2 \
+      libchromaprint-tools \
       libgirepository-1.0-1 \
-      mp3gain \
       nano \
       python3-gi \
       python3-gst-1.0 \
