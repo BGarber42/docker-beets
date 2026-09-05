@@ -19,6 +19,13 @@ Compose-facing behavior must remain compatible with `lscr.io/linuxserver/beets`:
 
 Internals may differ (no Alpine/s6 requirement).
 
+## Base image
+
+- `python:3.13-slim-trixie` (Debian 13) for current PyGObject / `girepository-2.0`
+- Builder uses `libgirepository-2.0-dev`; runtime uses `libgirepository-2.0-0`
+- `libchromaprint-tools` provides `fpcalc` (not Ubuntu's `chromaprint-tools`)
+- No `mp3gain` in Debian; default config uses `replaygain.backend: ffmpeg`
+
 ## Source resolution
 
 Dockerfile build-args:
@@ -38,13 +45,14 @@ Branch alias map (extend in the workflow `sanitize_branch` function):
 
 - `fix/manual-id-proposal-candidates` → `import-proposals`
 
+## CI gating
+
+1. **test** job: amd64 build + smoke test (`beet version`, web on `:8337`, seeded files)
+2. **publish** job: `needs: test` and only runs when test succeeds and event is not a PR
+
+Broken images must not be pushed; publish never runs in parallel with an unfinished or failed test.
+
 ## Caching
 
 - Dockerfile builder stage: `--mount=type=cache,target=/root/.cache/uv`
 - Actions: `cache-from` / `cache-to` `type=gha` scopes `beets-amd64` and `beets-multi`
-
-## Debian package gotchas
-
-- Use `libchromaprint-tools` (not Ubuntu's `chromaprint-tools`) for `fpcalc`.
-- `mp3gain` is not in Debian bookworm; default config uses `replaygain.backend: ffmpeg`.
-- Pin `PyGObject<3.52` on bookworm: newer releases need `girepository-2.0` (trixie+).

@@ -51,6 +51,7 @@ Add more short aliases in `.github/workflows/container-publish.yaml`.
 
 ## Runtime contract
 
+- Base: Debian Trixie (`python:3.13-slim-trixie`)
 - Default process: `beet web` on `0.0.0.0:8337`
 - Seeds `/config/config.yaml` and `/config/beets.sh` when missing
 - Default library DB: `/config/musiclibrary.blb`
@@ -63,9 +64,9 @@ Add more short aliases in `.github/workflows/container-publish.yaml`.
 
 GitHub Actions workflow [`.github/workflows/container-publish.yaml`](.github/workflows/container-publish.yaml):
 
-- Builds `linux/amd64` + `linux/arm64`
-- Uses Buildx GHA layer cache and Dockerfile cache mounts for `uv`
-- Pull requests: smoke test only (no push)
+- **test** job builds `linux/amd64`, runs smoke tests, and does not push
+- **publish** job runs only after test succeeds (skipped on pull requests)
+- Publishes `linux/amd64` + `linux/arm64` to GHCR with Buildx GHA layer cache
 - `master` push + nightly schedule: publish `nightly`
 - Manual dispatch:
   - `channel=nightly`

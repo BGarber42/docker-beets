@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.13
 
-FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
+FROM python:${PYTHON_VERSION}-slim-trixie AS builder
 
 ARG BEETS_REPO=https://github.com/BGarber42/beets.git
 ARG BEETS_REF=master
@@ -21,7 +21,7 @@ RUN apt-get update \
       gobject-introspection \
       libcairo2-dev \
       libffi-dev \
-      libgirepository1.0-dev \
+      libgirepository-2.0-dev \
       make \
       pkg-config \
       python3-dev \
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
       flask-cors \
       pyacoustid \
       pylast \
-      "PyGObject>=3.42,<3.52" \
+      PyGObject \
       python3-discogs-client \
       requests \
       requests_oauthlib \
@@ -58,7 +58,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
  && install -m 0755 /tmp/mp3val-src/mp3val /usr/local/bin/mp3val \
  && rm -rf /src /tmp/mp3val-src
 
-FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
+FROM python:${PYTHON_VERSION}-slim-trixie AS runtime
 
 ARG BUILD_DATE
 ARG VERSION=dev
@@ -98,7 +98,7 @@ RUN apt-get update \
       imagemagick \
       libcairo2 \
       libchromaprint-tools \
-      libgirepository-1.0-1 \
+      libgirepository-2.0-0 \
       nano \
       python3-gi \
       python3-gst-1.0 \
