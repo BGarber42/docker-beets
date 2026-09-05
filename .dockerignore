@@ -1,6 +1,15 @@
 .git
-.gitignore
 .github
 .gitattributes
-READMETEMPLATE.md
+.gitignore
+.editorconfig
+.dockerignore
+Jenkinsfile
+jenkins-vars.yml
+readme-vars.yml
+package_versions.txt
 README.md
+CLAUDE.md
+LICENSE
+*.md
+!root/**

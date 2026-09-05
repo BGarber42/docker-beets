@@ -1,0 +1,289 @@
+name: Container Publish
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Image channel to publish
+        type: choice
+        options:
+          - nightly
+          - latest
+          - branch
+        default: nightly
+      beets_ref:
+        description: >
+          Git ref in BGarber42/beets. Required for channel=branch.
+          Optional override for nightly/latest.
+        required: false
+        type: string
+
+concurrency:
+  group: container-publish-${{ github.workflow }}-${{ github.event_name }}-${{ inputs.channel || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: ghcr.io/bgarber42/beets
+  BEETS_REPO: https://github.com/BGarber42/beets.git
+  BEETS_API_REPO: BGarber42/beets
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout docker-beets
+        uses: actions/checkout@v5
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve source ref and image tags
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          INPUT_REF: ${{ inputs.beets_ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE="${IMAGE_NAME,,}"
+          CHANNEL="${INPUT_CHANNEL:-}"
+          BEETS_REF="${INPUT_REF:-}"
+          TAGS=()
+
+          sanitize_branch() {
+            local raw="$1"
+            case "${raw}" in
+              fix/manual-id-proposal-candidates)
+                printf '%s\n' "import-proposals"
+                return
+                ;;
+            esac
+            local slug
+            slug="$(printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g')"
+            slug="${slug:0:48}"
+            slug="${slug%-}"
+            if [[ -z "${slug}" ]]; then
+              slug="branch"
+            fi
+            printf '%s\n' "${slug}"
+          }
+
+          resolve_sha() {
+            local ref="$1"
+            if [[ "${ref}" =~ ^[0-9a-f]{7,40}$ ]]; then
+              printf '%s\n' "${ref}"
+              return
+            fi
+            local line sha
+            line="$(git ls-remote --refs "${BEETS_REPO}" "refs/heads/${ref}" "refs/tags/${ref}" | head -n1 || true)"
+            sha="$(printf '%s' "${line}" | cut -f1)"
+            if [[ -z "${sha}" ]]; then
+              echo "Unable to resolve ref '${ref}' in ${BEETS_REPO}" >&2
+              exit 1
+            fi
+            printf '%s\n' "${sha}"
+          }
+
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            CHANNEL="pr"
+            BEETS_REF="${BEETS_REF:-master}"
+          elif [[ "${EVENT_NAME}" == "schedule" || "${EVENT_NAME}" == "push" ]]; then
+            CHANNEL="nightly"
+            BEETS_REF="${BEETS_REF:-master}"
+          elif [[ -z "${CHANNEL}" ]]; then
+            CHANNEL="nightly"
+            BEETS_REF="${BEETS_REF:-master}"
+          fi
+
+          case "${CHANNEL}" in
+            latest)
+              if [[ -z "${BEETS_REF}" ]]; then
+                BEETS_REF="$(gh api "repos/${BEETS_API_REPO}/releases/latest" --jq '.tag_name')"
+              fi
+              VERSION="${BEETS_REF#v}"
+              MAJOR_MINOR="$(printf '%s' "${VERSION}" | cut -d. -f1-2)"
+              SHA="$(resolve_sha "${BEETS_REF}")"
+              TAGS+=("${IMAGE}:latest")
+              TAGS+=("${IMAGE}:${VERSION}")
+              TAGS+=("${IMAGE}:${MAJOR_MINOR}")
+              IMAGE_VERSION="${VERSION}"
+              BEETS_REF="${SHA}"
+              ;;
+            branch)
+              if [[ -z "${BEETS_REF}" ]]; then
+                echo "beets_ref is required when channel=branch" >&2
+                exit 1
+              fi
+              BRANCH_TAG="$(sanitize_branch "${BEETS_REF}")"
+              SHA="$(resolve_sha "${BEETS_REF}")"
+              SHORT_SHA="$(printf '%s' "${SHA}" | cut -c1-7)"
+              TAGS+=("${IMAGE}:${BRANCH_TAG}")
+              TAGS+=("${IMAGE}:${BRANCH_TAG}-${SHORT_SHA}")
+              IMAGE_VERSION="${BRANCH_TAG}-${SHORT_SHA}"
+              BEETS_REF="${SHA}"
+              ;;
+            pr)
+              SHA="$(resolve_sha "${BEETS_REF}")"
+              SHORT_SHA="$(printf '%s' "${SHA}" | cut -c1-7)"
+              TAGS+=("${IMAGE}:pr-build")
+              IMAGE_VERSION="pr-${SHORT_SHA}"
+              BEETS_REF="${SHA}"
+              ;;
+            nightly)
+              BEETS_REF="${BEETS_REF:-master}"
+              SHA="$(resolve_sha "${BEETS_REF}")"
+              SHORT_SHA="$(printf '%s' "${SHA}" | cut -c1-7)"
+              TAGS+=("${IMAGE}:nightly")
+              TAGS+=("${IMAGE}:nightly-${SHORT_SHA}")
+              IMAGE_VERSION="nightly-${SHORT_SHA}"
+              BEETS_REF="${SHA}"
+              ;;
+            *)
+              echo "Unknown channel: ${CHANNEL}" >&2
+              exit 1
+              ;;
+          esac
+
+          SHORT_SHA="$(printf '%s' "${BEETS_REF}" | cut -c1-7)"
+          {
+            echo "image=${IMAGE}"
+            echo "channel=${CHANNEL}"
+            echo "beets_ref=${BEETS_REF}"
+            echo "image_version=${IMAGE_VERSION}"
+            echo "short_sha=${SHORT_SHA}"
+            echo "smoke_tag=${IMAGE}:ci-smoke-${SHORT_SHA}"
+            echo "tags<<EOF"
+            printf '%s\n' "${TAGS[@]}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "channel=${CHANNEL}"
+          echo "beets_ref=${BEETS_REF}"
+          echo "Resolved tags:"
+          printf '  %s\n' "${TAGS[@]}"
+
+      - name: Docker metadata labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.resolve.outputs.image }}
+          labels: |
+            org.opencontainers.image.title=beets
+            org.opencontainers.image.description=Behavioral drop-in replacement for linuxserver/beets
+            org.opencontainers.image.source=https://github.com/BGarber42/docker-beets
+            org.opencontainers.image.licenses=GPL-3.0-only
+
+      - name: Resolve build date
+        id: buildargs
+        shell: bash
+        run: echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          push: false
+          platforms: linux/amd64
+          tags: ${{ steps.resolve.outputs.smoke_tag }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
+            VERSION=${{ steps.resolve.outputs.image_version }}
+            VCS_REF=${{ steps.resolve.outputs.beets_ref }}
+            BEETS_REPO=${{ env.BEETS_REPO }}
+            BEETS_REF=${{ steps.resolve.outputs.beets_ref }}
+          cache-from: type=gha,scope=beets-amd64
+          cache-to: type=gha,mode=max,scope=beets-amd64
+
+      - name: Smoke test drop-in contract
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.resolve.outputs.smoke_tag }}"
+          WORK="$(mktemp -d)"
+          mkdir -p "${WORK}/config" "${WORK}/music" "${WORK}/downloads"
+
+          docker run --rm \
+            -e PUID="$(id -u)" \
+            -e PGID="$(id -g)" \
+            -e TZ=Etc/UTC \
+            -e BEETSDIR=/tmp/beets-config \
+            -e HOME=/tmp/beets-config \
+            "${IMAGE}" \
+            version
+
+          cid="$(docker run -d \
+            -e PUID=1000 \
+            -e PGID=1000 \
+            -e TZ=Etc/UTC \
+            -v "${WORK}/config:/config" \
+            -v "${WORK}/music:/music" \
+            -v "${WORK}/downloads:/downloads" \
+            -p 8337:8337 \
+            "${IMAGE}")"
+
+          cleanup() {
+            docker logs "${cid}" || true
+            docker rm -f "${cid}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 30); do
+            if (echo >/dev/tcp/127.0.0.1/8337) >/dev/null 2>&1; then
+              echo "web UI port is ready"
+              test -f "${WORK}/config/config.yaml"
+              test -x "${WORK}/config/beets.sh"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "web UI did not become ready on :8337" >&2
+          exit 1
+
+      - name: Build and push multi-arch image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.resolve.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
+            VERSION=${{ steps.resolve.outputs.image_version }}
+            VCS_REF=${{ steps.resolve.outputs.beets_ref }}
+            BEETS_REPO=${{ env.BEETS_REPO }}
+            BEETS_REF=${{ steps.resolve.outputs.beets_ref }}
+          cache-from: type=gha,scope=beets-multi
+          cache-to: type=gha,mode=max,scope=beets-multi
