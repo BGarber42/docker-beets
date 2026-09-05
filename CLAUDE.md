@@ -68,24 +68,31 @@ Branch alias map (extend in the workflow `sanitize_branch` function):
 
 ## CI gating
 
-1. **test** job: amd64 build + smoke test (`beet version`, web on `:8337`, seeded files)
-2. **publish** job: `needs: test` and only runs when test succeeds and event is not a PR
+1. **resolve** job: beets SHA, tags, labels, build date (once)
+2. **build** matrix (native, parallel):
+   - `linux/amd64` on `ubuntu-latest`
+   - `linux/arm64` on `ubuntu-24.04-arm`
+3. Each matrix leg smoke-tests the image it just built (drop-in contract +
+   `INSTALL_PIP_PACKAGES`)
+4. **publish** job (non-PR only): after both legs succeed, assemble the multi-arch
+   manifest with `docker buildx imagetools create` and apply public tags
 
-Broken images must not be pushed; publish never runs in parallel with an unfinished or failed test.
+Publishable events push each platform **by untagged digest** before smoke tests.
+Public channel tags are created only in `publish`. Failed builds/smoke may leave
+untagged blobs; they never get `nightly` / `latest` / branch tags.
+
+Pull requests: `load: true` locally on each native runner; no GHCR writes; no
+manifest publication.
 
 ## Caching
 
-Why builds still feel slow even when "nothing changed":
+Why rebuilds still cost time even when packaging is unchanged:
 
-1. **Publish always builds `linux/arm64` under QEMU** — that dominates wall time and
-   is inherently slower than amd64, even with warm caches.
-2. **`BEETS_REF` is a commit SHA** — the beets install layer must rebuild when the
-   source SHA changes (nightly/branch). Heavy deps (PyGObject, apt) are layered
-   above that so they stay cached.
-3. **Test + publish are separate jobs** — publish reuses GHA/registry cache, but
-   still performs a full multi-arch build; it does not reuse the smoke-test local
-   image.
-4. **Frequent pushes cancel in-flight runs** — warm caches help the next attempt,
+1. **`BEETS_REF` is a commit SHA** — the beets install layer rebuilds when the
+   source SHA changes. Heavy deps (PyGObject, apt) stay above that layer.
+2. **Cold architecture caches** — first run after a cache-key change must fill
+   `beets-amd64` / `beets-arm64` (and matching registry buildcaches).
+3. **Frequent pushes cancel in-flight runs** — warm caches help the next attempt,
    but cancelled publishes waste partial work.
 
 Dockerfile layering (stable → volatile):
@@ -93,8 +100,9 @@ Dockerfile layering (stable → volatile):
 - builder apt/uv → mp3val → third-party Python deps → beets git SHA install
 - runtime apt → copy venv → entrypoint → **LABEL/ARG metadata last**
 
-Actions cache:
+Actions cache (architecture-isolated; do not share writable scopes across matrix):
 
-- Shared GHA scope `beets` for test + publish
-- Registry cache tag `ghcr.io/bgarber42/beets:buildcache`
+- GHA scopes `beets-amd64` / `beets-arm64`
+- Registry: `ghcr.io/bgarber42/beets:buildcache-amd64` /
+  `buildcache-arm64`
 - Builder: `--mount=type=cache,target=/root/.cache/uv`

@@ -37,8 +37,8 @@ env:
   BEETS_API_REPO: BGarber42/beets
 
 jobs:
-  test:
-    name: Build and smoke test
+  resolve:
+    name: Resolve source and tags
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,12 +52,6 @@ jobs:
       build_date: ${{ steps.buildargs.outputs.build_date }}
       labels: ${{ steps.meta.outputs.labels }}
     steps:
-      - name: Checkout docker-beets
-        uses: actions/checkout@v5
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
       - name: Resolve source ref and image tags
         id: resolve
         env:
@@ -175,7 +169,6 @@ jobs:
             echo "beets_ref=${BEETS_REF}"
             echo "image_version=${IMAGE_VERSION}"
             echo "short_sha=${SHORT_SHA}"
-            echo "smoke_tag=${IMAGE}:ci-smoke-${SHORT_SHA}"
             echo "tags<<EOF"
             printf '%s\n' "${TAGS[@]}"
             echo "EOF"
@@ -202,32 +195,131 @@ jobs:
         shell: bash
         run: echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
 
-      - name: Build amd64 image for smoke test
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: resolve
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            cache: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            cache: arm64
+    steps:
+      - name: Checkout docker-beets
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare smoke image name
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLATFORM_SLUG="$(printf '%s' '${{ matrix.platform }}' | tr '/' '-')"
+          echo "tag=beets:ci-smoke-${PLATFORM_SLUG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push by digest
+        id: build
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
-          load: true
-          push: false
-          platforms: linux/amd64
-          tags: ${{ steps.resolve.outputs.smoke_tag }}
-          labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ needs.resolve.outputs.labels }}
           build-args: |
-            BUILD_DATE=${{ steps.buildargs.outputs.build_date }}
-            VERSION=${{ steps.resolve.outputs.image_version }}
-            VCS_REF=${{ steps.resolve.outputs.beets_ref }}
+            BUILD_DATE=${{ needs.resolve.outputs.build_date }}
+            VERSION=${{ needs.resolve.outputs.image_version }}
+            VCS_REF=${{ needs.resolve.outputs.beets_ref }}
             BEETS_REPO=${{ env.BEETS_REPO }}
-            BEETS_REF=${{ steps.resolve.outputs.beets_ref }}
+            BEETS_REF=${{ needs.resolve.outputs.beets_ref }}
+          outputs: type=image,name=${{ needs.resolve.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: |
-            type=gha,scope=beets
-            type=registry,ref=ghcr.io/bgarber42/beets:buildcache
+            type=gha,scope=beets-${{ matrix.cache }}
+            type=registry,ref=ghcr.io/bgarber42/beets:buildcache-${{ matrix.cache }}
           cache-to: |
-            type=gha,mode=max,scope=beets
+            type=gha,mode=max,scope=beets-${{ matrix.cache }}
+            type=registry,ref=ghcr.io/bgarber42/beets:buildcache-${{ matrix.cache }},mode=max
 
-      - name: Smoke test drop-in contract
+      - name: Export digest
+        if: github.event_name != 'pull_request'
+        shell: bash
         run: |
           set -euo pipefail
-          IMAGE="${{ steps.resolve.outputs.smoke_tag }}"
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.cache }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Prepare image for smoke test
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "ref=${{ steps.smoke.outputs.tag }}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ref=${{ needs.resolve.outputs.image }}@${{ steps.build.outputs.digest }}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Build and load for PR smoke test
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.platform }}
+          load: true
+          push: false
+          tags: ${{ steps.smoke.outputs.tag }}
+          labels: ${{ needs.resolve.outputs.labels }}
+          build-args: |
+            BUILD_DATE=${{ needs.resolve.outputs.build_date }}
+            VERSION=${{ needs.resolve.outputs.image_version }}
+            VCS_REF=${{ needs.resolve.outputs.beets_ref }}
+            BEETS_REPO=${{ env.BEETS_REPO }}
+            BEETS_REF=${{ needs.resolve.outputs.beets_ref }}
+          cache-from: |
+            type=gha,scope=beets-${{ matrix.cache }}
+            type=registry,ref=ghcr.io/bgarber42/beets:buildcache-${{ matrix.cache }}
+          cache-to: |
+            type=gha,mode=max,scope=beets-${{ matrix.cache }}
+
+      - name: Pull digest for smoke test
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: docker pull "${{ steps.image.outputs.ref }}"
+
+      - name: Smoke test drop-in contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.image.outputs.ref }}"
           WORK="$(mktemp -d)"
           mkdir -p "${WORK}/config" "${WORK}/music" "${WORK}/downloads"
 
@@ -272,9 +364,10 @@ jobs:
           exit 1
 
       - name: Smoke test INSTALL_PIP_PACKAGES
+        shell: bash
         run: |
           set -euo pipefail
-          IMAGE="${{ steps.resolve.outputs.smoke_tag }}"
+          IMAGE="${{ steps.image.outputs.ref }}"
           WORK="$(mktemp -d)"
           mkdir -p "${WORK}/config" "${WORK}/music" "${WORK}/downloads"
 
@@ -308,18 +401,21 @@ jobs:
 
   publish:
     name: Publish multi-arch image
-    needs: test
-    if: github.event_name != 'pull_request' && needs.test.result == 'success'
+    needs:
+      - resolve
+      - build
+    if: github.event_name != 'pull_request' && needs.build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Checkout docker-beets
-        uses: actions/checkout@v5
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -331,24 +427,48 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push multi-arch image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ needs.test.outputs.tags }}
-          labels: ${{ needs.test.outputs.labels }}
-          build-args: |
-            BUILD_DATE=${{ needs.test.outputs.build_date }}
-            VERSION=${{ needs.test.outputs.image_version }}
-            VCS_REF=${{ needs.test.outputs.beets_ref }}
-            BEETS_REPO=${{ env.BEETS_REPO }}
-            BEETS_REF=${{ needs.test.outputs.beets_ref }}
-          cache-from: |
-            type=gha,scope=beets
-            type=registry,ref=ghcr.io/bgarber42/beets:buildcache
-          cache-to: |
-            type=gha,mode=max,scope=beets
-            type=registry,ref=ghcr.io/bgarber42/beets:buildcache,mode=max
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ needs.resolve.outputs.image }}
+          TAGS: ${{ needs.resolve.outputs.tags }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t DIGEST_FILES < <(ls -1)
+          if [[ "${#DIGEST_FILES[@]}" -ne 2 ]]; then
+            echo "Expected exactly 2 digests, found ${#DIGEST_FILES[@]}:" >&2
+            printf '  %s\n' "${DIGEST_FILES[@]}" >&2
+            exit 1
+          fi
+
+          TAG_ARGS=()
+          while IFS= read -r tag; do
+            [[ -z "${tag}" ]] && continue
+            TAG_ARGS+=(--tag "${tag}")
+          done <<< "${TAGS}"
+
+          SOURCE_ARGS=()
+          for digest_file in "${DIGEST_FILES[@]}"; do
+            SOURCE_ARGS+=("${IMAGE}@sha256:${digest_file}")
+          done
+
+          docker buildx imagetools create "${TAG_ARGS[@]}" "${SOURCE_ARGS[@]}"
+
+      - name: Inspect published platforms
+        env:
+          IMAGE: ${{ needs.resolve.outputs.image }}
+          TAGS: ${{ needs.resolve.outputs.tags }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRIMARY_TAG="$(printf '%s\n' "${TAGS}" | sed '/^$/d' | head -n1)"
+          docker buildx imagetools inspect "${PRIMARY_TAG}"
+
+          platforms="$(docker buildx imagetools inspect "${PRIMARY_TAG}" --raw \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin); print(" ".join(sorted(m["platform"]["os"]+"/"+m["platform"]["architecture"] for m in data.get("manifests",[]))))')"
+          echo "Published platforms: ${platforms}"
+          if [[ "${platforms}" != "linux/amd64 linux/arm64" ]]; then
+            echo "Expected platforms 'linux/amd64 linux/arm64', got '${platforms}'" >&2
+            exit 1
+          fi

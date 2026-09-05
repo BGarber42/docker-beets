@@ -70,9 +70,12 @@ Add more short aliases in `.github/workflows/container-publish.yaml`.
 
 GitHub Actions workflow [`.github/workflows/container-publish.yaml`](.github/workflows/container-publish.yaml):
 
-- **test** job builds `linux/amd64`, runs smoke tests, and does not push
-- **publish** job runs only after test succeeds (skipped on pull requests)
-- Publishes `linux/amd64` + `linux/arm64` to GHCR with Buildx GHA layer cache
+- **resolve** job computes beets SHA, tags, and labels once
+- **build** matrix builds natively in parallel (`ubuntu-latest` + `ubuntu-24.04-arm`),
+  smoke-tests each platform, and (non-PR) pushes untagged digests to GHCR
+- **publish** job (non-PR) merges digests into a multi-arch manifest and applies
+  public tags only after both smoke tests pass
+- Pull requests never write to GHCR
 - `master` push + nightly schedule: publish `nightly`
 - Manual dispatch:
   - `channel=nightly`
