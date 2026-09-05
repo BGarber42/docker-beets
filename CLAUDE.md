@@ -75,5 +75,26 @@ Broken images must not be pushed; publish never runs in parallel with an unfinis
 
 ## Caching
 
-- Dockerfile builder stage: `--mount=type=cache,target=/root/.cache/uv`
-- Actions: `cache-from` / `cache-to` `type=gha` scopes `beets-amd64` and `beets-multi`
+Why builds still feel slow even when "nothing changed":
+
+1. **Publish always builds `linux/arm64` under QEMU** — that dominates wall time and
+   is inherently slower than amd64, even with warm caches.
+2. **`BEETS_REF` is a commit SHA** — the beets install layer must rebuild when the
+   source SHA changes (nightly/branch). Heavy deps (PyGObject, apt) are layered
+   above that so they stay cached.
+3. **Test + publish are separate jobs** — publish reuses GHA/registry cache, but
+   still performs a full multi-arch build; it does not reuse the smoke-test local
+   image.
+4. **Frequent pushes cancel in-flight runs** — warm caches help the next attempt,
+   but cancelled publishes waste partial work.
+
+Dockerfile layering (stable → volatile):
+
+- builder apt/uv → mp3val → third-party Python deps → beets git SHA install
+- runtime apt → copy venv → entrypoint → **LABEL/ARG metadata last**
+
+Actions cache:
+
+- Shared GHA scope `beets` for test + publish
+- Registry cache tag `ghcr.io/bgarber42/beets:buildcache`
+- Builder: `--mount=type=cache,target=/root/.cache/uv`

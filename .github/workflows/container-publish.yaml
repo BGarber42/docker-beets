@@ -218,8 +218,11 @@ jobs:
             VCS_REF=${{ steps.resolve.outputs.beets_ref }}
             BEETS_REPO=${{ env.BEETS_REPO }}
             BEETS_REF=${{ steps.resolve.outputs.beets_ref }}
-          cache-from: type=gha,scope=beets-amd64
-          cache-to: type=gha,mode=max,scope=beets-amd64
+          cache-from: |
+            type=gha,scope=beets
+            type=registry,ref=ghcr.io/bgarber42/beets:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=beets
 
       - name: Smoke test drop-in contract
         run: |
@@ -344,6 +347,8 @@ jobs:
             BEETS_REPO=${{ env.BEETS_REPO }}
             BEETS_REF=${{ needs.test.outputs.beets_ref }}
           cache-from: |
-            type=gha,scope=beets-amd64
-            type=gha,scope=beets-multi
-          cache-to: type=gha,mode=max,scope=beets-multi
+            type=gha,scope=beets
+            type=registry,ref=ghcr.io/bgarber42/beets:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=beets
+            type=registry,ref=ghcr.io/bgarber42/beets:buildcache,mode=max
