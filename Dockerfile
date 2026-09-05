@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
       flask-cors \
       pyacoustid \
       pylast \
-      PyGObject \
+      "PyGObject>=3.42,<3.52" \
       python3-discogs-client \
       requests \
       requests_oauthlib \

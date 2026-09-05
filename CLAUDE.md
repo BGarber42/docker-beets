@@ -47,3 +47,4 @@ Branch alias map (extend in the workflow `sanitize_branch` function):
 
 - Use `libchromaprint-tools` (not Ubuntu's `chromaprint-tools`) for `fpcalc`.
 - `mp3gain` is not in Debian bookworm; default config uses `replaygain.backend: ffmpeg`.
+- Pin `PyGObject<3.52` on bookworm: newer releases need `girepository-2.0` (trixie+).
