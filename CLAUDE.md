@@ -42,3 +42,8 @@ Branch alias map (extend in the workflow `sanitize_branch` function):
 
 - Dockerfile builder stage: `--mount=type=cache,target=/root/.cache/uv`
 - Actions: `cache-from` / `cache-to` `type=gha` scopes `beets-amd64` and `beets-multi`
+
+## Debian package gotchas
+
+- Use `libchromaprint-tools` (not Ubuntu's `chromaprint-tools`) for `fpcalc`.
+- `mp3gain` is not in Debian bookworm; default config uses `replaygain.backend: ffmpeg`.

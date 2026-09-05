@@ -56,7 +56,7 @@ Add more short aliases in `.github/workflows/container-publish.yaml`.
 - Default library DB: `/config/musiclibrary.blb`
 - User `abc` with host `PUID`/`PGID` ownership on `/config`
 - Compatibility symlink: `/lsiopy/bin/beet` → venv `beet`
-- Plugin tooling parity: ffmpeg, ImageMagick, chromaprint/`fpcalc`, mp3gain,
+- Plugin tooling: ffmpeg (also replaygain), ImageMagick, chromaprint/`fpcalc`,
   mp3val, Discogs/web/chroma/lastgenre helpers, `beetcamp`, `beets-extrafiles`
 
 ## Publish workflow
