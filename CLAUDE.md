@@ -15,7 +15,10 @@ Compose-facing behavior must remain compatible with `lscr.io/linuxserver/beets`:
 - Default command runs `beet web`
 - Seed `/config/config.yaml` and executable `/config/beets.sh` when absent
 - Runtime user name `abc` (for `docker exec -u abc ...` muscle memory)
-- `/lsiopy/bin/beet` symlink retained for older helper scripts
+- `/lsiopy` is a symlink to `/opt/beets` (venv used by `beet`)
+- `INSTALL_PIP_PACKAGES` (space/comma-separated) installs into that venv at
+  container start via `uv pip` (root only; before dropping to `abc`)
+- `DOCKER_MODS` is intentionally unsupported
 
 Internals may differ (no Alpine/s6 requirement).
 

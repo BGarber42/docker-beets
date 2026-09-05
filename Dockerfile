@@ -26,7 +26,8 @@ RUN apt-get update \
       pkg-config \
       python3-dev \
  && rm -rf /var/lib/apt/lists/* \
- && pip install --no-cache-dir "uv>=0.8,<0.10"
+ && pip install --no-cache-dir "uv>=0.8,<0.10" \
+ && install -m 0755 "$(command -v uv)" /uv
 
 WORKDIR /src
 
@@ -107,14 +108,15 @@ RUN apt-get update \
  && groupadd --gid 1000 abc \
  && useradd --uid 1000 --gid 1000 --home-dir /config --create-home \
       --shell /usr/sbin/nologin abc \
- && mkdir -p /music /downloads /lsiopy/bin \
+ && mkdir -p /music /downloads \
  && chown -R abc:abc /config /music /downloads
 
+COPY --from=builder /uv /usr/local/bin/uv
 COPY --from=builder /opt/beets /opt/beets
 COPY --from=builder /usr/local/bin/mp3val /usr/local/bin/mp3val
 COPY root/ /
 
-RUN ln -sf /opt/beets/bin/beet /lsiopy/bin/beet \
+RUN ln -sfn /opt/beets /lsiopy \
  && chmod +x /entrypoint.sh /defaults/beets.sh \
  && /opt/beets/bin/python -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init(None)"
 

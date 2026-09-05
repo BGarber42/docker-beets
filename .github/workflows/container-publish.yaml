@@ -268,6 +268,41 @@ jobs:
           echo "web UI did not become ready on :8337" >&2
           exit 1
 
+      - name: Smoke test INSTALL_PIP_PACKAGES
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.resolve.outputs.smoke_tag }}"
+          WORK="$(mktemp -d)"
+          mkdir -p "${WORK}/config" "${WORK}/music" "${WORK}/downloads"
+
+          cid="$(docker run -d \
+            -e PUID=1000 \
+            -e PGID=1000 \
+            -e TZ=Etc/UTC \
+            -e INSTALL_PIP_PACKAGES="six" \
+            -v "${WORK}/config:/config" \
+            -v "${WORK}/music:/music" \
+            -v "${WORK}/downloads:/downloads" \
+            -p 18337:8337 \
+            "${IMAGE}")"
+
+          cleanup() {
+            docker logs "${cid}" || true
+            docker rm -f "${cid}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 60); do
+            if (echo >/dev/tcp/127.0.0.1/18337) >/dev/null 2>&1; then
+              docker exec -u abc "${cid}" python -c "import six; print(six.__version__)"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "INSTALL_PIP_PACKAGES smoke test failed" >&2
+          exit 1
+
   publish:
     name: Publish multi-arch image
     needs: test

@@ -20,7 +20,23 @@ if [[ ! -f /config/beets.sh ]]; then
 fi
 chmod +x /config/beets.sh
 
+install_pip_packages() {
+  local raw="${INSTALL_PIP_PACKAGES:-}"
+  raw="${raw//,/ }"
+  raw="$(printf '%s' "${raw}" | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')"
+  if [[ -z "${raw}" ]]; then
+    return 0
+  fi
+
+  # shellcheck disable=SC2206
+  local packages=( ${raw} )
+  echo "Installing pip packages into /opt/beets: ${packages[*]}"
+  uv pip install --python /opt/beets/bin/python --no-cache "${packages[@]}"
+}
+
 if [[ "$(id -u)" -eq 0 ]]; then
+  install_pip_packages
+
   if getent group "${PGID}" >/dev/null 2>&1; then
     EXISTING_GROUP="$(getent group "${PGID}" | cut -d: -f1)"
     if [[ "${EXISTING_GROUP}" != "abc" ]]; then
@@ -37,6 +53,10 @@ if [[ "$(id -u)" -eq 0 ]]; then
     set -- web
   fi
   exec gosu abc:abc beet "$@"
+fi
+
+if [[ -n "${INSTALL_PIP_PACKAGES:-}" ]]; then
+  echo "INSTALL_PIP_PACKAGES requires starting the container as root; skipping." >&2
 fi
 
 if [[ "$#" -eq 0 ]]; then

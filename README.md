@@ -60,6 +60,10 @@ Add more short aliases in `.github/workflows/container-publish.yaml`.
 - Full plugin tooling: ffmpeg, ImageMagick, GStreamer/PyGObject, chromaprint/`fpcalc`,
   mp3val, Discogs/web/chroma/lastgenre helpers, `beetcamp`, `beets-extrafiles`
   (seeded replaygain defaults to ffmpeg; GStreamer remains available)
+- `INSTALL_PIP_PACKAGES` — space- or comma-separated packages installed at
+  startup into `/opt/beets` (same venv `beet` uses). Example:
+  `INSTALL_PIP_PACKAGES=beets-filetote requests-oauthlib`
+  (`DOCKER_MODS` is not supported.)
 
 ## Publish workflow
 
