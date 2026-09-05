@@ -22,6 +22,8 @@ chmod +x /config/beets.sh
 
 install_pip_packages() {
   local raw="${INSTALL_PIP_PACKAGES:-}"
+  # LSIO-style separators: | , and whitespace
+  raw="${raw//|/ }"
   raw="${raw//,/ }"
   raw="$(printf '%s' "${raw}" | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')"
   if [[ -z "${raw}" ]]; then
