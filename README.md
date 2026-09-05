@@ -51,14 +51,15 @@ Add more short aliases in `.github/workflows/container-publish.yaml`.
 
 ## Runtime contract
 
-- Base: Debian Trixie (`python:3.13-slim-trixie`)
+- Base: Debian Trixie (`python:3.13-slim-trixie`); larger than Alpine LSIO by design
 - Default process: `beet web` on `0.0.0.0:8337`
 - Seeds `/config/config.yaml` and `/config/beets.sh` when missing
 - Default library DB: `/config/musiclibrary.blb`
 - User `abc` with host `PUID`/`PGID` ownership on `/config`
 - Compatibility symlink: `/lsiopy/bin/beet` → venv `beet`
-- Plugin tooling: ffmpeg (also replaygain), ImageMagick, chromaprint/`fpcalc`,
+- Full plugin tooling: ffmpeg, ImageMagick, GStreamer/PyGObject, chromaprint/`fpcalc`,
   mp3val, Discogs/web/chroma/lastgenre helpers, `beetcamp`, `beets-extrafiles`
+  (seeded replaygain defaults to ffmpeg; GStreamer remains available)
 
 ## Publish workflow
 

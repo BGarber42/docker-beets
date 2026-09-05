@@ -50,6 +50,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
       requests_oauthlib \
       typing-extensions \
       unidecode \
+ && uv pip uninstall --python /opt/beets/bin/python -y pip setuptools wheel \
  && mkdir -p /tmp/mp3val-src \
  && curl -fsSL -o /tmp/mp3val-src/mp3val.tar.gz \
       https://downloads.sourceforge.net/mp3val/mp3val-0.1.8-src.tar.gz \
@@ -91,8 +92,9 @@ RUN apt-get update \
       ca-certificates \
       ffmpeg \
       flac \
+      gir1.2-gstreamer-1.0 \
+      gir1.2-gst-plugins-base-1.0 \
       gosu \
-      gobject-introspection \
       gstreamer1.0-plugins-base \
       gstreamer1.0-plugins-good \
       imagemagick \
@@ -100,8 +102,6 @@ RUN apt-get update \
       libchromaprint-tools \
       libgirepository-2.0-0 \
       nano \
-      python3-gi \
-      python3-gst-1.0 \
       tzdata \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd --gid 1000 abc \
@@ -112,11 +112,11 @@ RUN apt-get update \
 
 COPY --from=builder /opt/beets /opt/beets
 COPY --from=builder /usr/local/bin/mp3val /usr/local/bin/mp3val
-RUN ln -sf /opt/beets/bin/beet /lsiopy/bin/beet
-
 COPY root/ /
 
-RUN chmod +x /entrypoint.sh /defaults/beets.sh
+RUN ln -sf /opt/beets/bin/beet /lsiopy/bin/beet \
+ && chmod +x /entrypoint.sh /defaults/beets.sh \
+ && /opt/beets/bin/python -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init(None)"
 
 WORKDIR /config
 EXPOSE 8337

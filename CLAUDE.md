@@ -24,7 +24,24 @@ Internals may differ (no Alpine/s6 requirement).
 - `python:3.13-slim-trixie` (Debian 13) for current PyGObject / `girepository-2.0`
 - Builder uses `libgirepository-2.0-dev`; runtime uses `libgirepository-2.0-0`
 - `libchromaprint-tools` provides `fpcalc` (not Ubuntu's `chromaprint-tools`)
-- No `mp3gain` in Debian; default config uses `replaygain.backend: ffmpeg`
+- Default seeded config uses `replaygain.backend: ffmpeg` (Debian has no `mp3gain`);
+  GStreamer + PyGObject remain installed so users can switch backends/plugins
+
+## Size expectations
+
+The image is **intentionally larger** than `lscr.io/linuxserver/beets` (~223 MB
+compressed on Alpine). We ship a full plugin/tooling stack on Debian Trixie
+(ffmpeg, ImageMagick, GStreamer, chromaprint, mp3val, web/Discogs/chroma deps,
+beetcamp, extrafiles). Do not strip those for size unless introducing a separate
+slim tag; drop-in users may enable any of the seeded plugins.
+
+Safe size wins already applied (no feature loss):
+
+- Avoid Debian `python3-gi` / `python3-gst-1.0` (they pull a second system Python
+  into the official `python` image). Use venv `PyGObject` + GIR typelibs instead.
+- Drop runtime `gobject-introspection` tooling package; keep `libgirepository` +
+  `gir1.2-gstreamer*` typelibs.
+- Remove `pip` / `setuptools` / `wheel` from the runtime venv after install.
 
 ## Source resolution
 
