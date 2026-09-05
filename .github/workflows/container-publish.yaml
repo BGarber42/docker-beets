@@ -354,7 +354,23 @@ jobs:
               docker exec "${cid}" test -f /config/config.yaml
               docker exec "${cid}" test -x /config/beets.sh
               docker exec "${cid}" git --version >/dev/null
-              docker exec -u abc "${cid}" beet version >/dev/null
+
+              # beet web and a concurrent beet CLI can race on library migrations
+              # (UNIQUE constraint on migrations.name). Wait until the DB is quiet.
+              ready=0
+              for _ in $(seq 1 30); do
+                if docker exec -u abc "${cid}" beet version >/dev/null 2>&1; then
+                  ready=1
+                  break
+                fi
+                sleep 1
+              done
+              if [[ "${ready}" -ne 1 ]]; then
+                echo "beet version failed after waiting for library migrations" >&2
+                docker exec -u abc "${cid}" beet version || true
+                exit 1
+              fi
+
               docker exec -u abc "${cid}" python -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst; Gst.init(None)"
               exit 0
             fi

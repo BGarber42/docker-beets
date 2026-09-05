@@ -73,7 +73,9 @@ Branch alias map (extend in the workflow `sanitize_branch` function):
    - `linux/amd64` on `ubuntu-latest`
    - `linux/arm64` on `ubuntu-24.04-arm`
 3. Each matrix leg smoke-tests the image it just built (drop-in contract +
-   `INSTALL_PIP_PACKAGES`)
+   `INSTALL_PIP_PACKAGES`). After the web port is up, `beet version` is retried
+   until library migrations finish — concurrent `beet web` + CLI can hit an
+   upstream UNIQUE constraint on `migrations.name`.
 4. **publish** job (non-PR only): after both legs succeed, assemble the multi-arch
    manifest with `docker buildx imagetools create` and apply public tags
 
