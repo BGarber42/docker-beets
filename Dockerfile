@@ -50,7 +50,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
       requests_oauthlib \
       typing-extensions \
       unidecode \
- && uv pip uninstall --python /opt/beets/bin/python -y pip setuptools wheel \
+ && uv pip uninstall --python /opt/beets/bin/python pip setuptools wheel \
  && mkdir -p /tmp/mp3val-src \
  && curl -fsSL -o /tmp/mp3val-src/mp3val.tar.gz \
       https://downloads.sourceforge.net/mp3val/mp3val-0.1.8-src.tar.gz \
